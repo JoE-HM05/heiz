@@ -11,6 +11,11 @@ requires-python = ">=3.10"
 authors = [{ name = "JoE-HM05" }]
 license = { text = "MIT" }
 
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6.0",
+]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
@@ -18,3 +23,20 @@ package-dir = {"" = "src"}
 where = ["src"]
 include = ["hm.egt*"]
 namespaces = true
+
+[tool.ruff]
+line-length = 79
+indent-width = 4
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = []
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
