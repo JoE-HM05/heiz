@@ -50,6 +50,7 @@ def _(np):
             factor_q_hydr_abgl_h: float = 1.1,
             hydr_abgl_twe: bool = False,
             hydr_abgl_t_adder: float = 5.0,
+            twe_corr_adder: float = 10.,
             graedigkeit_wt: float = 3.0,
             t_norm: float = -16.0,
             t_hg: float = 16.0,
@@ -63,6 +64,8 @@ def _(np):
             self.heizstunden_jahr: float = h_heizstunden
             self.heizkurve_steigung: float = heizkurve_steigung
             self.graed_k: float = graedigkeit_wt
+            # Adder to correct for non-idealistic potable water heating
+            self.twe_corr_adder: float = twe_corr_adder
 
             self.vl_norm_hk: float = t_hk_ausleg[0]
             self.rl_norm_hk: float = t_hk_ausleg[1]
@@ -114,7 +117,8 @@ def _(np):
             self.p_ges: float
             self.t_rl_tot: float
             self.t_rl_zirk: float
-            self.teillastfaktor: float
+            self.lastfaktor_heizung: float
+            self.lastfaktor_ges: float
 
         def sim_heiz(self, t_a: float) -> None:
             # Calculate current position in Heizbereich:
@@ -148,8 +152,12 @@ def _(np):
                 )
 
             self.p_ges = self.aktuelle_heizlast + self.p_twe_tot
-            self.teillastfaktor = self.aktuelle_heizlast / self.norm_heizlast
+            self.lastfaktor_heizung = self.aktuelle_heizlast / self.norm_heizlast
+            self.lastfaktor_ges = (self.p_ges) / (
+                self.norm_heizlast + self.p_twe_tot
+            )
 
+            # Get total weighted mean rf temperature:
             self.t_rl_tot = self._get_tot_rl()
 
         def berechne_heizlast(self, t_a: float) -> float:
@@ -206,7 +214,7 @@ def _(np):
             self.t_rl_zirk = self.t_rl_zirk_base + zuschlag_rl_zirk
             return (
                 self.p_ww * self.t_kw + self.p_zirk * self.t_rl_zirk
-            ) / self.p_twe_tot + self.graed_k
+            ) / self.p_twe_tot + self.twe_corr_adder + self.graed_k
 
         def _get_tot_rl(
             self,
@@ -316,6 +324,13 @@ def _(mo):
     )
     hydr_abgleich_twe = mo.ui.checkbox(value=False, label="hydr. Abgleich TWE")
     grad_switch = mo.ui.checkbox(value=True, label="Grädigkeit 3 K")
+    twe_correction = mo.ui.slider(
+        start=0.,
+        stop=20.0,
+        value=10.,
+        label="Korrektur Delta TWE-RL",
+        show_value=True,
+    )
     return (
         aussentemperatur,
         grad_switch,
@@ -327,6 +342,7 @@ def _(mo):
         spez_ww_bedarf,
         wohnflaeche,
         zirkulationsbedarf,
+        twe_correction
     )
 
 
@@ -343,6 +359,7 @@ def _(
     spez_ww_bedarf,
     wohnflaeche,
     zirkulationsbedarf,
+    twe_correction
 ):
     mo.vstack(
         [
@@ -357,6 +374,7 @@ def _(
                     hydr_abgleich_heizung,
                     hydr_abgleich_twe,
                     grad_switch,
+                    twe_correction,
                 ],
                 justify="start",
                 gap=2,
@@ -380,6 +398,7 @@ def _(
     spez_ww_bedarf,
     wohnflaeche,
     zirkulationsbedarf,
+    twe_correction,
 ):
     virt_heiz: VirtHeiz = VirtHeiz(
         q_hwb=spez_heizbedarf.value,
@@ -402,6 +421,7 @@ def _(
         hydr_abgl_h=hydr_abgleich_heizung.value,
         hydr_abgl_twe=hydr_abgleich_twe.value,
         graedigkeit_wt=3.0 if grad_switch.value else 0.0,
+        twe_corr_adder=twe_correction.value,
     )
     virt_heiz.sim_heiz(aussentemperatur.value)
     return virt_heiz, virt_heiz_array
@@ -692,7 +712,7 @@ def _(mo, spez_ww_bedarf, virt_heiz: "VirtHeiz", zirkulationsbedarf):
       - **Heizwärmebedarf:** {virt_heiz.spez_waermebedarf_heiz:.0f} kWh/(m²a)
       - **Norm-Heizlast:** {virt_heiz.norm_heizlast:.1f} kW
       - **Aktuelle Heizlast:** {virt_heiz.aktuelle_heizlast:.1f} kW
-      - **Teillastfaktor:** {virt_heiz.teillastfaktor:.2f}
+      - **Lastfaktor:** {virt_heiz.lastfaktor_heizung:.2f}
       - **VL-Temperatur:** {virt_heiz.t_vl_hk_now:.1f} °C
       - **RL-Temperatur:** {virt_heiz.t_rl_hk_now:.1f} °C
       - **Temperaturspreizung:** {virt_heiz.t_spread_hk_now:.1f} K
@@ -707,7 +727,7 @@ def _(mo, spez_ww_bedarf, virt_heiz: "VirtHeiz", zirkulationsbedarf):
     - **Gesamtsystem:**
       - **Gesamtwärmebedarf:** {virt_heiz.spez_waermebedarf_ges:.0f} kWh/(m²a)
       - **Leistungsgewichteter Mittelwert der RL-Temperaturen:** {virt_heiz.t_rl_tot:.1f} °C
-      - **Lastfaktor gesamt:** {(virt_heiz.p_zirk + virt_heiz.p_ww + virt_heiz.aktuelle_heizlast) / (virt_heiz.p_zirk + virt_heiz.p_ww + virt_heiz.norm_heizlast):.2f}
+      - **Lastfaktor gesamt:** {virt_heiz.lastfaktor_ges:.2f}
     """)
     return
 
